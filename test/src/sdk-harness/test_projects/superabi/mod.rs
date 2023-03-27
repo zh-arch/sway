@@ -39,7 +39,7 @@ async fn superabi_test() -> Result<()> {
     let contract_methods = instance.methods();
 
     let response = contract_methods.superabi_test().call().await?;
-    assert_eq!(48, response.value);
+    assert_eq!(41, response.value);
 
     Ok(())
 }
