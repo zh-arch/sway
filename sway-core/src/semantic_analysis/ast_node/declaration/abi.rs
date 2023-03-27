@@ -8,7 +8,10 @@ use crate::{
         parsed::*,
         ty::{self, TyTraitItem},
     },
-    semantic_analysis::{declaration::insert_supertraits_into_namespace, Mode, TypeCheckContext},
+    semantic_analysis::{
+        declaration::{insert_supertraits_into_namespace, SupertraitOf},
+        Mode, TypeCheckContext,
+    },
     CompileResult,
 };
 
@@ -44,7 +47,12 @@ impl ty::TyAbiDecl {
         // Recursively make the interface surfaces and methods of the
         // supertraits available to this abi.
         check!(
-            insert_supertraits_into_namespace(ctx.by_ref(), contract_type, &supertraits),
+            insert_supertraits_into_namespace(
+                ctx.by_ref(),
+                contract_type,
+                &supertraits,
+                SupertraitOf::Abi
+            ),
             return err(warnings, errors),
             warnings,
             errors

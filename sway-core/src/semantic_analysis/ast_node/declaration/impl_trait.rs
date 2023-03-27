@@ -649,7 +649,6 @@ fn type_check_trait_implementation(
             warnings,
             errors
         );
-
         ctx.namespace.insert_trait_implementation(
             trait_name.clone(),
             trait_type_arguments.to_vec(),
@@ -1303,9 +1302,9 @@ fn handle_supertraits(
                 interface_surface_item_ids.extend(next_interface_supertrait_decl_refs);
                 impld_item_refs.extend(next_these_supertrait_decl_refs);
             }
-            Some(ty::TyDecl::AbiDecl { .. }) => errors.push(CompileError::AbiAsSupertrait {
-                span: supertrait.name.span().clone(),
-            }),
+            Some(ty::TyDecl::AbiDecl { .. }) => {
+                // we allow ABIs as superABIs now
+            }
             _ => errors.push(CompileError::TraitNotFound {
                 name: supertrait.name.to_string(),
                 span: supertrait.name.span(),

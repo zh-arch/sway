@@ -30,6 +30,7 @@ mod storage;
 mod storage_bytes;
 mod storage_map;
 mod storage_vec;
+mod superabi;
 mod token_ops;
 mod tx_fields;
 mod type_aliases;
