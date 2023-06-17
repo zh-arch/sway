@@ -1588,7 +1588,6 @@ dependencies = [
  "fuel-tx",
  "fuel-vm",
  "fuels-accounts",
- "fuels-code-gen 0.42.0",
  "fuels-core",
  "futures",
  "hex",
@@ -2080,22 +2079,6 @@ dependencies = [
 
 [[package]]
 name = "fuels-code-gen"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97e7b697abfac23b3505fa3136bb3e910ed664caa58d1efcb6e11644aa95d8aa"
-dependencies = [
- "Inflector",
- "fuel-abi-types 0.2.1",
- "itertools",
- "proc-macro2",
- "quote",
- "regex",
- "serde_json",
- "syn 2.0.18",
-]
-
-[[package]]
-name = "fuels-code-gen"
 version = "0.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e8ec25373ed1ae06cfe53afc4e3ecd6057aa4ff3a3329e40f42784afe21726b"
@@ -2146,7 +2129,7 @@ checksum = "3ef684e13ddc8b16f7828dc98ca309f69a6516068bb307c78b8e64aaf010b397"
 dependencies = [
  "Inflector",
  "fuel-abi-types 0.3.0",
- "fuels-code-gen 0.43.0",
+ "fuels-code-gen",
  "itertools",
  "proc-macro2",
  "quote",
