@@ -652,6 +652,8 @@ pub enum CompileError {
         method_name: String,
         as_traits: Vec<String>,
     },
+    #[error("Provided generic type is not of type str.")]
+    NonStrGenericType { span: Span },
 }
 
 impl std::convert::From<TypeError> for CompileError {
@@ -823,6 +825,7 @@ impl Spanned for CompileError {
             ConfigurableInLibrary { span } => span.clone(),
             NameDefinedMultipleTimes { span, .. } => span.clone(),
             MultipleApplicableItemsInScope { span, .. } => span.clone(),
+            NonStrGenericType { span } => span.clone(),
             CannotBeEvaluatedToConst { span } => span.clone(),
         }
     }

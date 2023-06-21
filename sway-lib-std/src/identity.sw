@@ -7,6 +7,7 @@ use ::address::Address;
 use ::call_frames::contract_id;
 use ::constants::{ZERO_B256, BASE_ASSET_ID};
 use ::contract_id::{AssetId, ContractId};
+use ::hash::*;
 use ::option::Option;
 
 /// The `Identity` type: either an `Address` or a `ContractId`.
@@ -145,4 +146,19 @@ fn test_contract_id() {
     assert(identity.is_contract_id());
     assert(identity.as_contract_id().unwrap() == id);
     assert(identity.as_address().is_none());
+}
+
+impl Hash for Identity {
+    fn hash(self, ref mut state: Hasher) {
+        match self {
+            Identity::Address(address) => {
+                0_u8.hash(state);
+                address.hash(state);
+            },
+            Identity::ContractId(id) => {
+                1_u8.hash(state);
+                id.hash(state);
+            },
+        }
+    }
 }

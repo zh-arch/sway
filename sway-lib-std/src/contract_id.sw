@@ -2,6 +2,7 @@
 library;
 
 use ::convert::From;
+use ::hash::*;
 
 /// The `ContractId` type, a struct wrapper around the inner `b256` value.
 pub struct ContractId {
@@ -96,3 +97,9 @@ impl ContractId {
 /// The `AssetId` type is simply an alias for `ContractId` that represents the ID of a native asset
 /// which matches the ID of the contract that implements that asset.
 pub type AssetId = ContractId;
+
+impl Hash for ContractId {
+    fn hash(self, ref mut state: Hasher) {
+        self.value.hash(state);
+    }
+}

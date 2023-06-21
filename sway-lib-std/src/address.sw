@@ -4,6 +4,7 @@ library;
 use ::call_frames::contract_id;
 use ::contract_id::{AssetId};
 use ::convert::From;
+use ::hash::*;
 use ::error_signals::FAILED_TRANSFER_TO_ADDRESS_SIGNAL;
 use ::revert::revert;
 use ::outputs::{Output, output_amount, output_count, output_type};
@@ -100,5 +101,11 @@ impl Address {
             mint r1;
         };
         self.transfer(amount, contract_id());
+    }
+}
+
+impl Hash for Address {
+    fn hash(self, ref mut state: Hasher) {
+        self.value.hash(state);
     }
 }
