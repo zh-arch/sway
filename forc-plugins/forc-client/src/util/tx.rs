@@ -15,7 +15,14 @@ use fuels_core::types::{
     transaction_builders::{create_coin_input, create_coin_message_input},
 };
 
-use forc_wallet::{account::derive_secret_key, utils::default_wallet_path};
+use forc_wallet::{
+    account::derive_secret_key,
+    balance::{
+        collect_accounts_with_verification, print_account_balances, AccountBalances,
+        AccountVerification, AccountsMap,
+    },
+    utils::default_wallet_path,
+};
 
 /// The maximum time to wait for a transaction to be included in a block by the node
 pub const TX_SUBMIT_TIMEOUT_MS: u64 = 30_000u64;
@@ -40,6 +47,21 @@ fn prompt_signature(tx_id: fuel_tx::Bytes32) -> Result<Signature> {
     let mut buf = String::new();
     std::io::stdin().read_line(&mut buf)?;
     Signature::from_str(buf.trim()).map_err(Error::msg)
+}
+
+/// Collect and return balances of each account in the accounts map.
+async fn collect_account_balances(
+    accounts_map: &AccountsMap,
+    provider: &Provider,
+) -> Result<AccountBalances> {
+    let accounts: Vec<_> = accounts_map
+        .values()
+        .map(|addr| Wallet::from_address(addr.clone(), Some(provider.clone())))
+        .collect();
+
+    futures::future::try_join_all(accounts.iter().map(|acc| acc.get_balances()))
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 #[async_trait]
@@ -146,9 +168,18 @@ impl<Tx: Buildable + SerializableVec + field::Witnesses + Send> TransactionBuild
                         "\nPlease provide the password of your encrypted wallet vault at {wallet_path:?}:"
                     );
                     let password = rpassword::prompt_password(prompt)?;
-                    // TODO: List all derived wallets via forc-wallet and let the users choose
-                    // account.
-                    let account_index = 0;
+                    let verification = AccountVerification::Yes(password.clone());
+                    let accounts = collect_accounts_with_verification(&wallet_path, verification)?;
+                    let provider = Provider::new(client.clone(), params);
+                    let account_balances = collect_account_balances(&accounts, &provider).await?;
+                    print_account_balances(&accounts, &account_balances);
+
+                    print!("\nPlease provide the index of account to use for signing:");
+                    std::io::stdout().flush()?;
+                    let mut account_index = String::new();
+                    std::io::stdin().read_line(&mut account_index)?;
+                    let account_index = account_index.trim().parse::<usize>()?;
+
                     let secret_key = derive_secret_key(&wallet_path, account_index, &password).map_err(|e| {
                         if e.to_string().contains("Mac Mismatch") {
                             anyhow::anyhow!("Failed to access forc-wallet vault. Please check your password")
