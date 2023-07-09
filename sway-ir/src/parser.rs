@@ -444,7 +444,7 @@ mod ir_builder {
 
             rule string_const() -> IrAstConstValue
                 = ['"'] chs:str_char()* ['"'] _ {
-                    IrAstConstValue::String(chs)
+                    IrAstConstValue::StringData(chs)
                 }
 
             rule str_char() -> u8
@@ -495,7 +495,7 @@ mod ir_builder {
                 / "bool" _ { IrAstTy::Bool }
                 / "u64" _ { IrAstTy::U64 }
                 / "b256" _ { IrAstTy::B256 }
-                / "string" _ "<" _ sz:decimal() ">" _ { IrAstTy::String(sz) }
+                / "string" _ "<" _ sz:decimal() ">" _ { IrAstTy::StringData(sz) }
                 / array_ty()
                 / struct_ty()
                 / union_ty()
@@ -725,7 +725,7 @@ mod ir_builder {
         Bool(bool),
         B256([u8; 32]),
         Number(u64),
-        String(Vec<u8>),
+        StringData(Vec<u8>),
         Array(IrAstTy, Vec<IrAstConst>),
         Struct(Vec<(IrAstTy, IrAstConst)>),
     }
@@ -752,7 +752,7 @@ mod ir_builder {
                 IrAstConstValue::Bool(b) => ConstantValue::Bool(*b),
                 IrAstConstValue::B256(bs) => ConstantValue::B256(*bs),
                 IrAstConstValue::Number(n) => ConstantValue::Uint(*n),
-                IrAstConstValue::String(bs) => ConstantValue::String(bs.clone()),
+                IrAstConstValue::StringData(bs) => ConstantValue::StringData(bs.clone()),
                 IrAstConstValue::Array(el_ty, els) => {
                     let els: Vec<_> = els
                         .iter()
@@ -784,7 +784,7 @@ mod ir_builder {
                 IrAstConstValue::Bool(b) => Constant::get_bool(context, *b),
                 IrAstConstValue::B256(bs) => Constant::get_b256(context, *bs),
                 IrAstConstValue::Number(n) => Constant::get_uint(context, 64, *n),
-                IrAstConstValue::String(s) => Constant::get_string(context, s.clone()),
+                IrAstConstValue::StringData(s) => Constant::get_string_data(context, s.clone()),
                 IrAstConstValue::Array(..) => {
                     let array_const = self.as_constant(context, val_ty);
                     Constant::get_array(context, array_const)
@@ -803,7 +803,7 @@ mod ir_builder {
         Bool,
         U64,
         B256,
-        String(u64),
+        StringData(u64),
         Array(Box<IrAstTy>, u64),
         Union(Vec<IrAstTy>),
         Struct(Vec<IrAstTy>),
@@ -817,7 +817,7 @@ mod ir_builder {
                 IrAstTy::Bool => Type::get_bool(context),
                 IrAstTy::U64 => Type::get_uint64(context),
                 IrAstTy::B256 => Type::get_b256(context),
-                IrAstTy::String(n) => Type::new_string(context, *n),
+                IrAstTy::StringData(n) => Type::new_string_data(context, *n),
                 IrAstTy::Array(el_ty, count) => {
                     let el_ty = el_ty.to_ir_type(context);
                     Type::new_array(context, el_ty, *count)

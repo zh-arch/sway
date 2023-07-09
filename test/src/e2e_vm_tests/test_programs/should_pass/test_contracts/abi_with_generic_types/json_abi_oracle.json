@@ -319,13 +319,13 @@
     },
     {
       "components": null,
-      "type": "str[5]",
+      "type": "str",
       "typeId": 18,
       "typeParameters": null
     },
     {
       "components": null,
-      "type": "str[6]",
+      "type": "str",
       "typeId": 19,
       "typeParameters": null
     },

@@ -192,7 +192,6 @@ Some Sway Libraries to try out:
 
 - [Binary Merkle Proof](https://github.com/FuelLabs/sway-libs/tree/master/libs/merkle_proof)
 - [Non-Fungible Token](https://github.com/FuelLabs/sway-libs/tree/master/libs/nft)
-- [String](https://github.com/FuelLabs/sway-libs/tree/master/libs/string)
 - [Signed Integers](https://github.com/FuelLabs/sway-libs/tree/master/libs/signed_integers)
 - [Unsigned Fixed Point Number](https://github.com/FuelLabs/sway-libs/tree/master/libs/fixed_point)
 - [StorageMapVec](https://github.com/FuelLabs/sway-libs/tree/master/libs/storagemapvec)

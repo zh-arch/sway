@@ -8,7 +8,7 @@ struct IdentityAliasWrapper {
 
 type Array = [IdentityAlias; 2];
 type Tuple = (AssetId, AssetId);
-type StringTy = str[9];
+type StringTy = str;
 type IdentityAliasWrapperAlias = IdentityAliasWrapper;
 struct Generic<T> {
     f: T,

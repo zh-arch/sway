@@ -100,9 +100,8 @@ impl Entry {
             ConstantValue::Undef | ConstantValue::Unit => Entry::new_word(0, size, name),
             ConstantValue::Bool(b) => Entry::new_word(u64::from(*b), size, name),
             ConstantValue::Uint(u) => Entry::new_word(*u, size, name),
-
             ConstantValue::B256(bs) => Entry::new_byte_array(bs.to_vec(), size, name),
-            ConstantValue::String(bs) => Entry::new_byte_array(bs.clone(), size, name),
+            ConstantValue::StringData(bs) => Entry::new_byte_array(bs.clone(), size, name),
 
             ConstantValue::Array(els) | ConstantValue::Struct(els) => Entry::new_collection(
                 els.iter()

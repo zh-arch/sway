@@ -91,7 +91,7 @@ impl<'a> Unifier<'a> {
             (Contract, Contract) => (vec![], vec![]),
             (RawUntypedPtr, RawUntypedPtr) => (vec![], vec![]),
             (RawUntypedSlice, RawUntypedSlice) => (vec![], vec![]),
-            (Str(l), Str(r)) => self.unify_strs(received, expected, span, l.val(), r.val()),
+            (Str, Str) => (vec![], vec![]),
             (Tuple(rfs), Tuple(efs)) if rfs.len() == efs.len() => self.unify_tuples(rfs, efs),
             (Array(re, rc), Array(ee, ec)) if rc.val() == ec.val() => {
                 self.unify_arrays(received, expected, span, re.type_id, ee.type_id)
@@ -262,28 +262,6 @@ impl<'a> Unifier<'a> {
 
     fn occurs_check(&self, generic: TypeInfo, other: &TypeInfo) -> bool {
         OccursCheck::new(self.engines).check(generic, other)
-    }
-
-    fn unify_strs(
-        &self,
-        received: TypeId,
-        expected: TypeId,
-        span: &Span,
-        r: usize,
-        e: usize,
-    ) -> (Vec<CompileWarning>, Vec<TypeError>) {
-        let warnings = vec![];
-        let mut errors = vec![];
-        if r != e {
-            let (received, expected) = self.assign_args(received, expected);
-            errors.push(TypeError::MismatchedType {
-                expected,
-                received,
-                help_text: self.help_text.clone(),
-                span: span.clone(),
-            });
-        }
-        (warnings, errors)
     }
 
     fn unify_tuples(

@@ -1,6 +1,8 @@
 library;
 
 use ::primitives::*;
+use ::raw_ptr::*;
+use ::str::*;
 
 pub trait Add {
     fn add(self, other: Self) -> Self;
@@ -253,6 +255,25 @@ impl Eq for raw_ptr {
     }
 }
 
+impl Eq for str {
+    fn eq(self, other: Self) -> bool {
+        if !__eq(self.len(), other.len()) {
+            return false;
+        }
+        let mut i = 0;
+        while __lt(i, self.len()) {
+            let self_byte = self.as_ptr().add_uint_offset(i).read_byte();
+            let other_byte = other.as_ptr().add_uint_offset(i).read_byte();
+            if !__eq(self_byte, other_byte) {
+                __log(45);
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+}
+
 pub trait Ord {
     fn gt(self, other: Self) -> bool;
     fn lt(self, other: Self) -> bool;
@@ -329,7 +350,6 @@ impl Ord for b256 {
         }
     }
 }
-
 pub trait BitwiseAnd {
     fn binary_and(self, other: Self) -> Self;
 }
@@ -659,6 +679,19 @@ fn test_decompose() {
         && decomposed.2.neq(expected.2)
         && decomposed.3.neq(expected.3)
     {
+        __revert(0)
+    }
+}
+
+#[test]
+fn test_str_eq() {
+    if !(
+    "foo" == "foo"
+     && "foo" != "bar"
+     && "foobar" != "bar"
+     && "Lorem Ipsum sit dolorem" != "bar"
+     && "Lorem Ipsum sit dolorem" == "Lorem Ipsum sit dolorem"
+    ) {
         __revert(0)
     }
 }

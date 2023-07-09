@@ -621,7 +621,7 @@ impl<'ir, 'eng> MidenVMAsmBuilder<'ir, 'eng> {
             Bool(b) => vec![DirectOp::push(b)],
             Uint(x) => vec![DirectOp::push(x)],
             B256(_) => todo!(),
-            String(_) => todo!(),
+            StringData(_) => todo!(),
             Array(_) => todo!(),
             Struct(_) => todo!(),
         }
