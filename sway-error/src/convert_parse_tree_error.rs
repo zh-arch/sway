@@ -41,6 +41,10 @@ pub enum ConvertParseTreeError {
     U32LiteralOutOfRange { span: Span },
     #[error("u64 literal out of range")]
     U64LiteralOutOfRange { span: Span },
+    #[error("u128 literal out of range")]
+    U128LiteralOutOfRange { span: Span },
+    #[error("u256 literal out of range")]
+    U256LiteralOutOfRange { span: Span },
     #[error("signed integers are not supported")]
     SignedIntegersNotSupported { span: Span },
     #[error("ref variables are not supported")]
@@ -147,6 +151,8 @@ impl Spanned for ConvertParseTreeError {
             ConvertParseTreeError::U16LiteralOutOfRange { span } => span.clone(),
             ConvertParseTreeError::U32LiteralOutOfRange { span } => span.clone(),
             ConvertParseTreeError::U64LiteralOutOfRange { span } => span.clone(),
+            ConvertParseTreeError::U128LiteralOutOfRange { span } => span.clone(),
+            ConvertParseTreeError::U256LiteralOutOfRange { span } => span.clone(),
             ConvertParseTreeError::SignedIntegersNotSupported { span } => span.clone(),
             ConvertParseTreeError::RefVariablesNotSupported { span } => span.clone(),
             ConvertParseTreeError::LiteralPatternsNotSupportedHere { span } => span.clone(),

@@ -6,6 +6,7 @@ use crate::{
 };
 
 use itertools::Itertools;
+use num_bigint::BigUint;
 use sway_ast::{
     attribute::Annotated,
     expr::{LoopControlFlow, ReassignmentOp, ReassignmentOpVariant},
@@ -1773,7 +1774,7 @@ fn expr_to_expression(
         },
         Expr::Path(path_expr) => path_expr_to_expression(context, handler, engines, path_expr)?,
         Expr::Literal(literal) => Expression {
-            kind: ExpressionKind::Literal(literal_to_literal(context, handler, literal)?),
+            kind: ExpressionKind::Literal(literal_to_literal(handler, literal)?),
             span,
         },
         Expr::AbiCast { args, .. } => {
@@ -2774,7 +2775,6 @@ fn path_root_opt_to_bool_and_qualified_path_root(
 }
 
 fn literal_to_literal(
-    _context: &mut Context,
     handler: &Handler,
     literal: sway_ast::Literal,
 ) -> Result<Literal, ErrorEmitted> {
@@ -2887,10 +2887,38 @@ fn literal_to_literal(
                         };
                         Literal::U64(value)
                     }
+                    LitIntType::U128 => {
+                        let value = match u128::try_from(parsed) {
+                            Ok(value) => value,
+                            Err(..) => {
+                                let error = ConvertParseTreeError::U128LiteralOutOfRange { span };
+                                return Err(handler.emit_err(error.into()));
+                            }
+                        };
+                        Literal::U128(value)
+                    }
+                    LitIntType::U256 => {
+                        let mut bytes = parsed.to_bytes_le();
+
+                        // Normalize removing zeros from the most signicants positions
+                        if let Some(&0) = bytes.last() {
+                            let len = bytes.iter().rposition(|&d| d != 0).map_or(0, |i| i + 1);
+                            bytes.truncate(len);
+                        }
+
+                        if bytes.len() <= 32 {
+                            Literal::U256(BigUint::from_bytes_le(&bytes))
+                        } else {
+                            let error = ConvertParseTreeError::U256LiteralOutOfRange { span };
+                            return Err(handler.emit_err(error.into()));
+                        }
+                    }
                     LitIntType::I8 | LitIntType::I16 | LitIntType::I32 | LitIntType::I64 => {
                         let error = ConvertParseTreeError::SignedIntegersNotSupported { span };
                         return Err(handler.emit_err(error.into()));
                     }
+                    LitIntType::I128 => todo!(),
+                    LitIntType::I256 => todo!(),
                 },
             }
         }
@@ -3551,7 +3579,7 @@ fn pattern_to_scrutinee(
         }
         Pattern::AmbiguousSingleIdent(ident) => Scrutinee::AmbiguousSingleIdent(ident),
         Pattern::Literal(literal) => Scrutinee::Literal {
-            value: literal_to_literal(context, handler, literal)?,
+            value: literal_to_literal(handler, literal)?,
             span,
         },
         Pattern::Constant(path_expr) => {
@@ -4203,4 +4231,54 @@ pub fn cfg_eval(
         }
     }
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use num_bigint::{BigUint, ToBigUint};
+
+    fn assert(ty: LitIntType, value: impl ToBigUint, expected: Literal) {
+        let actual = literal_to_literal(
+            &Handler::default(),
+            sway_ast::Literal::Int(LitInt {
+                span: Span::dummy(),
+                parsed: value.to_biguint().unwrap(),
+                ty_opt: Some((ty, Span::dummy())),
+            }),
+        );
+
+        if !matches!(&actual, Ok(l) if *l == expected) {
+            dbg!(&actual, &expected);
+            assert!(matches!(actual, Ok(l) if l == expected));
+        }
+    }
+
+    #[test]
+    fn ok_literal_to_literal() {
+        assert(LitIntType::U8, 0u8, Literal::U8(0));
+        assert(LitIntType::U8, u8::MAX, Literal::U8(u8::MAX));
+
+        assert(LitIntType::U16, 0u16, Literal::U16(0));
+        assert(LitIntType::U16, u16::MAX, Literal::U16(u16::MAX));
+
+        assert(LitIntType::U32, 0u32, Literal::U32(0));
+        assert(LitIntType::U32, u32::MAX, Literal::U32(u32::MAX));
+
+        assert(LitIntType::U64, 0u64, Literal::U64(0));
+        assert(LitIntType::U64, u64::MAX, Literal::U64(u64::MAX));
+
+        assert(LitIntType::U128, 0u128, Literal::U128(0));
+        assert(LitIntType::U128, u128::MAX, Literal::U128(u128::MAX));
+
+        let zero = BigUint::from_bytes_le(&[0u8; 32]);
+        let max_value = BigUint::from_bytes_le(&[255u8; 32]);
+        assert(LitIntType::U256, 0, Literal::U256(zero));
+        assert(
+            LitIntType::U256,
+            //115 quattuorvigintillion, if you are curious
+            max_value.clone(),
+            Literal::U256(max_value),
+        );
+    }
 }
