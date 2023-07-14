@@ -6,7 +6,6 @@ use crate::{
 };
 
 use itertools::Itertools;
-use num_bigint::BigUint;
 use sway_ast::{
     attribute::Annotated,
     expr::{LoopControlFlow, ReassignmentOp, ReassignmentOpVariant},
@@ -2837,8 +2836,9 @@ fn literal_to_literal(
                             }
                         }
                     } else {
+                        // TODO needs to support u256
                         match u64::try_from(&parsed) {
-                            Ok(value) => Literal::Numeric(value),
+                            Ok(value) => Literal::Numeric(value.into()),
                             Err(..) => {
                                 let error = ConvertParseTreeError::IntLiteralOutOfRange { span };
                                 return Err(handler.emit_err(error.into()));
@@ -2897,22 +2897,13 @@ fn literal_to_literal(
                         };
                         Literal::U128(value)
                     }
-                    LitIntType::U256 => {
-                        let mut bytes = parsed.to_bytes_le();
-
-                        // Normalize removing zeros from the most signicants positions
-                        if let Some(&0) = bytes.last() {
-                            let len = bytes.iter().rposition(|&d| d != 0).map_or(0, |i| i + 1);
-                            bytes.truncate(len);
-                        }
-
-                        if bytes.len() <= 32 {
-                            Literal::U256(BigUint::from_bytes_le(&bytes))
-                        } else {
+                    LitIntType::U256 => match parsed.try_into() {
+                        Ok(num) => Literal::U256(num),
+                        Err(_) => {
                             let error = ConvertParseTreeError::U256LiteralOutOfRange { span };
                             return Err(handler.emit_err(error.into()));
                         }
-                    }
+                    },
                     LitIntType::I8 | LitIntType::I16 | LitIntType::I32 | LitIntType::I64 => {
                         let error = ConvertParseTreeError::SignedIntegersNotSupported { span };
                         return Err(handler.emit_err(error.into()));
@@ -4271,14 +4262,13 @@ mod tests {
         assert(LitIntType::U128, 0u128, Literal::U128(0));
         assert(LitIntType::U128, u128::MAX, Literal::U128(u128::MAX));
 
-        let zero = BigUint::from_bytes_le(&[0u8; 32]);
+        //115 quattuorvigintillion, if you are curious
         let max_value = BigUint::from_bytes_le(&[255u8; 32]);
-        assert(LitIntType::U256, 0, Literal::U256(zero));
+        assert(LitIntType::U256, 0, Literal::U256(U256::min()));
         assert(
             LitIntType::U256,
-            //115 quattuorvigintillion, if you are curious
             max_value.clone(),
-            Literal::U256(max_value),
+            Literal::U256(U256::max()),
         );
     }
 }

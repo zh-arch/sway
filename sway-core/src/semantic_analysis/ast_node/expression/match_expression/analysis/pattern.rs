@@ -103,6 +103,7 @@ pub(crate) enum Pattern {
     U64(Range<u64>),
     B256([u8; 32]),
     Boolean(bool),
+    //TODO needs to support u256
     Numeric(Range<u64>),
     String(String),
     Struct(StructPattern),
@@ -198,7 +199,12 @@ impl Pattern {
             Literal::U256(_) => todo!(),
             Literal::B256(x) => Pattern::B256(x),
             Literal::Boolean(b) => Pattern::Boolean(b),
-            Literal::Numeric(x) => Pattern::Numeric(Range::from_single(x)),
+            //TODO needs to support u256
+            //TODO remove unwrap()
+            Literal::Numeric(x) => {
+                let num = x.try_into().unwrap();
+                Pattern::Numeric(Range::from_single(num))
+            }
             Literal::String(s) => Pattern::String(s.as_str().to_string()),
         }
     }

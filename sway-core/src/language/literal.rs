@@ -7,8 +7,53 @@ use sway_types::{integer_bits::IntegerBits, span};
 use std::{
     fmt,
     hash::{Hash, Hasher},
-    num::{IntErrorKind, ParseIntError},
+    num::IntErrorKind,
 };
+
+#[derive(Debug, Clone, Eq)]
+pub struct U256 {
+    value: BigUint,
+}
+
+impl PartialEq for U256 {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl U256 {
+    pub fn min() -> U256 {
+        let value = BigUint::from_bytes_le(&[0]);
+        U256 { value }
+    }
+
+    pub fn max() -> U256 {
+        let value = BigUint::from_bytes_le(&[255; 32]);
+        U256 { value }
+    }
+}
+
+impl TryFrom<BigUint> for U256 {
+    type Error = IntErrorKind;
+
+    fn try_from(value: BigUint) -> Result<Self, Self::Error> {
+        let mut bytes = value.to_bytes_le();
+
+        // Normalize removing zeros from the most signicants positions
+        if let Some(&0) = bytes.last() {
+            let len = bytes.iter().rposition(|&d| d != 0).map_or(0, |i| i + 1);
+            bytes.truncate(len);
+        }
+
+        if bytes.len() <= 32 {
+            Ok(U256 {
+                value: BigUint::from_bytes_le(&bytes),
+            })
+        } else {
+            Err(IntErrorKind::PosOverflow)
+        }
+    }
+}
 
 #[derive(Debug, Clone, Eq)]
 pub enum Literal {
@@ -17,9 +62,9 @@ pub enum Literal {
     U32(u32),
     U64(u64),
     U128(u128),
-    U256(BigUint),
+    U256(U256),
     String(span::Span),
-    Numeric(u64),
+    Numeric(BigUint),
     Boolean(bool),
     B256([u8; 32]),
 }
@@ -110,11 +155,11 @@ impl Literal {
     #[allow(clippy::wildcard_in_or_patterns)]
     pub(crate) fn handle_parse_int_error(
         engines: &Engines,
-        e: ParseIntError,
+        e: &IntErrorKind,
         ty: TypeInfo,
         span: sway_types::Span,
     ) -> CompileError {
-        match e.kind() {
+        match e {
             IntErrorKind::PosOverflow => CompileError::IntegerTooLarge {
                 ty: engines.help_out(ty).to_string(),
                 span,
@@ -141,8 +186,8 @@ impl Literal {
             Literal::U16(_) => TypeInfo::UnsignedInteger(IntegerBits::Sixteen),
             Literal::U32(_) => TypeInfo::UnsignedInteger(IntegerBits::ThirtyTwo),
             Literal::U64(_) => TypeInfo::UnsignedInteger(IntegerBits::SixtyFour),
-            Literal::U128(_) => todo!(),
-            Literal::U256(_) => todo!(),
+            Literal::U128(_) => TypeInfo::UnsignedInteger(IntegerBits::V128),
+            Literal::U256(_) => TypeInfo::UnsignedInteger(IntegerBits::V256),
             Literal::Boolean(_) => TypeInfo::Boolean,
             Literal::B256(_) => TypeInfo::B256,
         }

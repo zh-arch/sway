@@ -15,7 +15,6 @@ pub(crate) use self::{
     method_application::*, struct_field_access::*, struct_instantiation::*, tuple_index_access::*,
     unsafe_downcast::*,
 };
-
 use crate::{
     asm_lang::{virtual_ops::VirtualOp, virtual_register::VirtualRegister},
     decl_engine::*,
@@ -30,7 +29,8 @@ use crate::{
     type_system::*,
     Engines,
 };
-
+use rustc_hash::FxHashSet;
+use std::collections::{HashMap, VecDeque};
 use sway_ast::intrinsics::Intrinsic;
 use sway_error::{
     convert_parse_tree_error::ConvertParseTreeError,
@@ -38,10 +38,6 @@ use sway_error::{
     warning::{CompileWarning, Warning},
 };
 use sway_types::{integer_bits::IntegerBits, Ident, Named, Span, Spanned};
-
-use rustc_hash::FxHashSet;
-
-use std::collections::{HashMap, VecDeque};
 
 #[allow(clippy::too_many_arguments)]
 impl ty::TyExpression {
@@ -393,8 +389,8 @@ impl ty::TyExpression {
             Literal::U16(_) => TypeInfo::UnsignedInteger(IntegerBits::Sixteen),
             Literal::U32(_) => TypeInfo::UnsignedInteger(IntegerBits::ThirtyTwo),
             Literal::U64(_) => TypeInfo::UnsignedInteger(IntegerBits::SixtyFour),
-            Literal::U128(_) => todo!(),
-            Literal::U256(_) => todo!(),
+            Literal::U128(_) => TypeInfo::UnsignedInteger(IntegerBits::V128),
+            Literal::U256(_) => TypeInfo::UnsignedInteger(IntegerBits::V256),
             Literal::Boolean(_) => TypeInfo::Boolean,
             Literal::B256(_) => TypeInfo::B256,
         };
@@ -1968,7 +1964,7 @@ impl ty::TyExpression {
                         num.to_string().parse().map(Literal::U8).map_err(|e| {
                             Literal::handle_parse_int_error(
                                 engines,
-                                e,
+                                e.kind(),
                                 TypeInfo::UnsignedInteger(IntegerBits::Eight),
                                 span.clone(),
                             )
@@ -1979,7 +1975,7 @@ impl ty::TyExpression {
                         num.to_string().parse().map(Literal::U16).map_err(|e| {
                             Literal::handle_parse_int_error(
                                 engines,
-                                e,
+                                e.kind(),
                                 TypeInfo::UnsignedInteger(IntegerBits::Sixteen),
                                 span.clone(),
                             )
@@ -1990,7 +1986,7 @@ impl ty::TyExpression {
                         num.to_string().parse().map(Literal::U32).map_err(|e| {
                             Literal::handle_parse_int_error(
                                 engines,
-                                e,
+                                e.kind(),
                                 TypeInfo::UnsignedInteger(IntegerBits::ThirtyTwo),
                                 span.clone(),
                             )
@@ -2001,8 +1997,30 @@ impl ty::TyExpression {
                         num.to_string().parse().map(Literal::U64).map_err(|e| {
                             Literal::handle_parse_int_error(
                                 engines,
-                                e,
+                                e.kind(),
                                 TypeInfo::UnsignedInteger(IntegerBits::SixtyFour),
+                                span.clone(),
+                            )
+                        }),
+                        new_type,
+                    ),
+                    IntegerBits::V128 => (
+                        num.to_string().parse().map(Literal::U128).map_err(|e| {
+                            Literal::handle_parse_int_error(
+                                engines,
+                                e.kind(),
+                                TypeInfo::UnsignedInteger(IntegerBits::V128),
+                                span.clone(),
+                            )
+                        }),
+                        new_type,
+                    ),
+                    IntegerBits::V256 => (
+                        num.try_into().map(Literal::U256).map_err(|e| {
+                            Literal::handle_parse_int_error(
+                                engines,
+                                &e,
+                                TypeInfo::UnsignedInteger(IntegerBits::V256),
                                 span.clone(),
                             )
                         }),
@@ -2013,7 +2031,7 @@ impl ty::TyExpression {
                     num.to_string().parse().map(Literal::U64).map_err(|e| {
                         Literal::handle_parse_int_error(
                             engines,
-                            e,
+                            e.kind(),
                             TypeInfo::UnsignedInteger(IntegerBits::SixtyFour),
                             span.clone(),
                         )
@@ -2043,10 +2061,109 @@ impl ty::TyExpression {
     }
 }
 
+fn check_asm_block_validity(asm: &AsmExpression) -> CompileResult<()> {
+    let mut errors = vec![];
+    let mut warnings = vec![];
+
+    // Collect all asm block instructions in the form of `VirtualOp`s
+    let mut opcodes = vec![];
+    for op in &asm.body {
+        let registers = op
+            .op_args
+            .iter()
+            .map(|reg_name| VirtualRegister::Virtual(reg_name.to_string()))
+            .collect::<Vec<VirtualRegister>>();
+
+        opcodes.push((
+            check!(
+                crate::asm_lang::Op::parse_opcode(
+                    &op.op_name,
+                    &registers,
+                    &op.immediate,
+                    op.span.clone(),
+                ),
+                return err(warnings, errors),
+                warnings,
+                errors
+            ),
+            op.op_name.clone(),
+            op.span.clone(),
+        ));
+    }
+
+    // Check #1: Disallow control flow instructions
+    //
+    errors.extend(
+        opcodes
+            .iter()
+            .filter(|op| {
+                matches!(
+                    op.0,
+                    VirtualOp::JMP(_)
+                        | VirtualOp::JI(_)
+                        | VirtualOp::JNE(..)
+                        | VirtualOp::JNEI(..)
+                        | VirtualOp::JNZI(..)
+                        | VirtualOp::RET(_)
+                        | VirtualOp::RETD(..)
+                        | VirtualOp::RVRT(..)
+                )
+            })
+            .map(|op| CompileError::DisallowedControlFlowInstruction {
+                name: op.1.to_string(),
+                span: op.2.clone(),
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    // Check #2: Disallow initialized registers from being reassigned in the asm block
+    //
+    // 1. Collect all registers that have initializers in the list of arguments
+    let initialized_registers = asm
+        .registers
+        .iter()
+        .filter(|reg| reg.initializer.is_some())
+        .map(|reg| VirtualRegister::Virtual(reg.name.to_string()))
+        .collect::<FxHashSet<_>>();
+
+    // 2. From the list of `VirtualOp`s, figure out what registers are assigned
+    let assigned_registers: FxHashSet<VirtualRegister> =
+        opcodes.iter().fold(FxHashSet::default(), |mut acc, op| {
+            for u in op.0.def_registers() {
+                acc.insert(u.clone());
+            }
+            acc
+        });
+
+    // 3. Intersect the list of assigned registers with the list of initialized registers
+    let initialized_and_assigned_registers = assigned_registers
+        .intersection(&initialized_registers)
+        .collect::<FxHashSet<_>>();
+
+    // 4. Form all the compile errors given the violating registers above. Obtain span information
+    //    from the original `asm.registers` vector.
+    errors.extend(
+        asm.registers
+            .iter()
+            .filter(|reg| {
+                initialized_and_assigned_registers
+                    .contains(&VirtualRegister::Virtual(reg.name.to_string()))
+            })
+            .map(|reg| CompileError::InitializedRegisterReassignment {
+                name: reg.name.to_string(),
+                span: reg.name.span(),
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    ok((), vec![], errors)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::Engines;
+    use num_bigint::BigUint;
     use sway_error::type_error::TypeError;
 
     fn do_type_check(
@@ -2213,102 +2330,119 @@ mod tests {
         );
         assert!(comp_res.warnings.is_empty() && comp_res.errors.is_empty());
     }
-}
 
-fn check_asm_block_validity(asm: &AsmExpression) -> CompileResult<()> {
-    let mut errors = vec![];
-    let mut warnings = vec![];
+    fn register_literals(engines: &Engines) -> HashMap<String, TypeId> {
+        let mut types = HashMap::new();
 
-    // Collect all asm block instructions in the form of `VirtualOp`s
-    let mut opcodes = vec![];
-    for op in &asm.body {
-        let registers = op
-            .op_args
-            .iter()
-            .map(|reg_name| VirtualRegister::Virtual(reg_name.to_string()))
-            .collect::<Vec<VirtualRegister>>();
+        use IntegerBits::*;
+        for bits in [Eight, Sixteen, ThirtyTwo, SixtyFour, V128, V256] {
+            let ty = TypeInfo::UnsignedInteger(bits);
+            let name = crate::engine_threading::WithEngines::new(ty.clone(), &engines).to_string();
+            let tid = engines.te().insert(&engines, ty);
+            types.insert(name, tid);
+        }
 
-        opcodes.push((
-            check!(
-                crate::asm_lang::Op::parse_opcode(
-                    &op.op_name,
-                    &registers,
-                    &op.immediate,
-                    op.span.clone(),
-                ),
-                return err(warnings, errors),
-                warnings,
-                errors
-            ),
-            op.op_name.clone(),
-            op.span.clone(),
-        ));
+        types
     }
 
-    // Check #1: Disallow control flow instructions
-    //
-    errors.extend(
-        opcodes
-            .iter()
-            .filter(|op| {
-                matches!(
-                    op.0,
-                    VirtualOp::JMP(_)
-                        | VirtualOp::JI(_)
-                        | VirtualOp::JNE(..)
-                        | VirtualOp::JNEI(..)
-                        | VirtualOp::JNZI(..)
-                        | VirtualOp::RET(_)
-                        | VirtualOp::RETD(..)
-                        | VirtualOp::RVRT(..)
-                )
-            })
-            .map(|op| CompileError::DisallowedControlFlowInstruction {
-                name: op.1.to_string(),
-                span: op.2.clone(),
-            })
-            .collect::<Vec<_>>(),
-    );
+    fn literal(literal: Literal) -> Expression {
+        Expression {
+            kind: ExpressionKind::Literal(literal),
+            span: Span::dummy(),
+        }
+    }
 
-    // Check #2: Disallow initialized registers from being reassigned in the asm block
-    //
-    // 1. Collect all registers that have initializers in the list of arguments
-    let initialized_registers = asm
-        .registers
-        .iter()
-        .filter(|reg| reg.initializer.is_some())
-        .map(|reg| VirtualRegister::Virtual(reg.name.to_string()))
-        .collect::<FxHashSet<_>>();
+    fn ok_type_check(engines: &Engines, expr: Expression, type_annotation: TypeId) {
+        let result = do_type_check(&engines, expr, type_annotation);
+        assert!(result.is_ok_no_warn());
+    }
 
-    // 2. From the list of `VirtualOp`s, figure out what registers are assigned
-    let assigned_registers: FxHashSet<VirtualRegister> =
-        opcodes.iter().fold(FxHashSet::default(), |mut acc, op| {
-            for u in op.0.def_registers() {
-                acc.insert(u.clone());
-            }
-            acc
-        });
+    fn nok_type_check(engines: &Engines, expr: Expression, type_annotation: TypeId) {
+        let result = do_type_check(&engines, expr, type_annotation);
+        assert!(!result.errors.is_empty());
+        dbg!(result);
+    }
 
-    // 3. Intersect the list of assigned registers with the list of initialized registers
-    let initialized_and_assigned_registers = assigned_registers
-        .intersection(&initialized_registers)
-        .collect::<FxHashSet<_>>();
+    #[test]
+    fn ok_type_check_unsigned_integers() {
+        let engines = Engines::default();
+        let types = register_literals(&engines);
 
-    // 4. Form all the compile errors given the violating registers above. Obtain span information
-    //    from the original `asm.registers` vector.
-    errors.extend(
-        asm.registers
-            .iter()
-            .filter(|reg| {
-                initialized_and_assigned_registers
-                    .contains(&VirtualRegister::Virtual(reg.name.to_string()))
-            })
-            .map(|reg| CompileError::InitializedRegisterReassignment {
-                name: reg.name.to_string(),
-                span: reg.name.span(),
-            })
-            .collect::<Vec<_>>(),
-    );
+        ok_type_check(&engines, literal(Literal::U8(0)), types["u8"]);
+        ok_type_check(&engines, literal(Literal::U16(0)), types["u16"]);
+        ok_type_check(&engines, literal(Literal::U32(0)), types["u32"]);
+        ok_type_check(&engines, literal(Literal::U64(0)), types["u64"]);
+        ok_type_check(&engines, literal(Literal::U128(0)), types["U128"]);
+        ok_type_check(&engines, literal(Literal::U256(U256::min())), types["U256"]);
 
-    ok((), vec![], errors)
+        ok_type_check(&engines, literal(Literal::Numeric(0u8.into())), types["u8"]);
+        ok_type_check(
+            &engines,
+            literal(Literal::Numeric(0u8.into())),
+            types["u16"],
+        );
+        ok_type_check(
+            &engines,
+            literal(Literal::Numeric(0u8.into())),
+            types["u32"],
+        );
+        ok_type_check(
+            &engines,
+            literal(Literal::Numeric(0u8.into())),
+            types["u64"],
+        );
+        ok_type_check(
+            &engines,
+            literal(Literal::Numeric(0u8.into())),
+            types["U128"],
+        );
+        ok_type_check(
+            &engines,
+            literal(Literal::Numeric(0u8.into())),
+            types["U256"],
+        );
+    }
+
+    #[test]
+    fn nok_numeric_too_large() {
+        let engines = Engines::default();
+        let types = register_literals(&engines);
+
+        nok_type_check(
+            &engines,
+            literal(Literal::Numeric((u8::MAX as u128 + 1).into())),
+            types["u8"],
+        );
+        nok_type_check(
+            &engines,
+            literal(Literal::Numeric((u16::MAX as u128 + 1).into())),
+            types["u16"],
+        );
+        nok_type_check(
+            &engines,
+            literal(Literal::Numeric((u32::MAX as u128 + 1).into())),
+            types["u32"],
+        );
+        nok_type_check(
+            &engines,
+            literal(Literal::Numeric((u64::MAX as u128 + 1).into())),
+            types["u64"],
+        );
+
+        let bigger_than_128_bits =
+            BigUint::from_bytes_le(&[255; 16]) + BigUint::from_bytes_le(&[1]);
+        nok_type_check(
+            &engines,
+            literal(Literal::Numeric(bigger_than_128_bits)),
+            types["U128"],
+        );
+
+        let bigger_than_256_bits =
+            BigUint::from_bytes_le(&[255; 32]) + BigUint::from_bytes_le(&[1]);
+        nok_type_check(
+            &engines,
+            literal(Literal::Numeric(bigger_than_256_bits)),
+            types["U256"].into(),
+        );
+    }
 }

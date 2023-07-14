@@ -433,6 +433,8 @@ impl DisplayWithEngines for TypeInfo {
                 IntegerBits::Sixteen => "u16",
                 IntegerBits::ThirtyTwo => "u32",
                 IntegerBits::SixtyFour => "u64",
+                IntegerBits::V128 => "U128",
+                IntegerBits::V256 => "U256",
             }
             .into(),
             Boolean => "bool".into(),
@@ -498,6 +500,8 @@ impl DebugWithEngines for TypeInfo {
                 IntegerBits::Sixteen => "u16",
                 IntegerBits::ThirtyTwo => "u32",
                 IntegerBits::SixtyFour => "u64",
+                IntegerBits::V128 => "U128",
+                IntegerBits::V256 => "U256",
             }
             .into(),
             Boolean => "bool".into(),
@@ -614,6 +618,8 @@ impl TypeInfo {
                     Sixteen => "u16",
                     ThirtyTwo => "u32",
                     SixtyFour => "u64",
+                    V128 => todo!(),
+                    V256 => todo!(),
                 }
                 .into()
             }
